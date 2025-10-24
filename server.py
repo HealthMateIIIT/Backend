@@ -34,7 +34,11 @@ CORS(app,
 
 # Import and register blueprints
 from routes.auth import auth_bp
+from routes.chat_routes import chat_bp
+
+# Register blueprints
 app.register_blueprint(auth_bp, url_prefix='/api/auth')
+app.register_blueprint(chat_bp, url_prefix='/api')
 
 def token_required(f):
     @wraps(f)
@@ -61,13 +65,44 @@ def token_required(f):
     
     return decorated
 
-# Initialize models (load once at startup)
-print("Loading models...")
-symptom_model = SymptomToDiseaseModel()
-precaution_model = DiseaseToPrecautionModel()
-symptom_lookup_model = DiseaseToSymptomModel()
-llm_handler = GeminiLLMHandler()
-print("Models loaded successfully!")
+def create_app():
+    app = Flask(__name__)
+    app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key')
+    
+    # Configure CORS
+    CORS(app, 
+         resources={
+             r"/*": {
+                 "origins": ["http://localhost:3000", "http://localhost:5000"],
+                 "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+                 "allow_headers": ["Content-Type", "Authorization"],
+                 "supports_credentials": True
+             }
+         })
+    
+    # Initialize models (load once at startup)
+    print("Loading models...")
+    with app.app_context():
+        # Store models in app.extensions for easy access
+        app.extensions = {
+            'symptom_model': SymptomToDiseaseModel(),
+            'precaution_model': DiseaseToPrecautionModel(),
+            'symptom_lookup_model': DiseaseToSymptomModel(),
+            'llm_handler': GeminiLLMHandler()
+        }
+    print("Models loaded successfully!")
+    
+    return app
+
+# Create the Flask application
+app = create_app()
+
+# Import and register blueprints after app creation to avoid circular imports
+from routes.auth import auth_bp
+from routes.chat_routes import chat_bp
+
+app.register_blueprint(auth_bp, url_prefix='/api/auth')
+app.register_blueprint(chat_bp, url_prefix='/api')
 
 @app.route('/health', methods=['GET'])
 def health_check():

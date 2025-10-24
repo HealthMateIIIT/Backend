@@ -145,3 +145,158 @@ Respond with ONLY the formatted message to the user (no JSON, no extra formattin
             return f"Common symptoms include: {', '.join(symptoms)}. If you experience these, please consult a healthcare professional."
         
         return "I'm not sure how to respond to that. Please try rephrasing your question."
+
+    def analyze_query_with_context(self, user_query, memory_context):
+        """
+        Analyze user query with memory context to determine intent and extract relevant information.
+        
+        Args:
+            user_query: The user's message
+            memory_context: The user's memory context from the database
+            
+        Returns:
+            dict: {
+                "task_type": str,
+                "extracted_info": list,
+                "requires_memory_update": bool
+            }
+        """
+        prompt = f"""
+You are a medical query analyzer with access to the user's health context.
+
+User's Health Context:
+{memory_context}
+
+Analyze the following user query and determine:
+1. What type of query is this? (symptom_to_disease, disease_to_precaution, disease_to_symptom, or general_health)
+2. Extract relevant information (symptoms, disease names, etc.)
+3. Determine if this information should be remembered in the user's health context
+
+User Query: "{user_query}"
+
+Respond ONLY with a JSON object in this exact format:
+{{
+    "task_type": "symptom_to_disease or disease_to_precaution or disease_to_symptom or general_health",
+    "extracted_info": ["list", "of", "symptoms or disease name"],
+    "requires_memory_update": true/false,
+    "memory_update_type": "long_term" or "recent" or "none"
+}}"""
+        
+        try:
+            response = self.model.generate_content(prompt)
+            response_text = response.text.strip()
+            
+            # Clean up response to extract JSON
+            if '```json' in response_text:
+                response_text = response_text.split('```json')[1].split('```')[0].strip()
+            elif '```' in response_text:
+                response_text = response_text.split('```')[1].strip()
+            
+            # Parse the JSON response
+            result = json.loads(response_text)
+            
+            # Set default values if keys are missing
+            result.setdefault('requires_memory_update', False)
+            result.setdefault('memory_update_type', 'none')
+            
+            return result
+            
+        except Exception as e:
+            print(f"Error in analyze_query_with_context: {str(e)}")
+            return {
+                "task_type": "general_health",
+                "extracted_info": [],
+                "requires_memory_update": False,
+                "memory_update_type": "none"
+            }
+    
+    def format_response_with_context(self, task_type, data, user_query, memory_context):
+        """
+        Format the model's output into a natural language response with memory context.
+        
+        Args:
+            task_type: The type of task (symptom_to_disease, disease_to_precaution, disease_to_symptom, general_health)
+            data: The raw output from the model
+            user_query: The original user query
+            memory_context: The user's memory context
+            
+        Returns:
+            str: Natural language response
+        """
+        # Create a prompt that includes the memory context
+        prompt = f"""
+You are a helpful and empathetic health assistant. Use the following context about the user to provide personalized responses.
+
+User's Health Context:
+{memory_context}
+
+Current Query: "{user_query}"
+
+Task Type: {task_type}
+
+Model Output:
+{json.dumps(data, indent=2)}
+
+Please provide a helpful, empathetic response that:
+1. Acknowledges the user's query
+2. Uses the provided context to personalize the response
+3. Presents the information in a clear, easy-to-understand way
+4. Includes relevant health advice or next steps
+5. Is supportive and non-alarming
+6. Add Emojis to make engaging
+7. Donot give markdown format output. give html format output.
+
+Response:"""
+        
+        try:
+            response = self.model.generate_content(prompt)
+            return response.text.strip()
+        except Exception as e:
+            print(f"Error in format_response_with_context: {str(e)}")
+            # Fallback to basic formatting if there's an error
+            return self._format_basic_response(task_type, data, user_query)
+    
+    def _format_basic_response(self, task_type, data, user_query):
+        """Fallback response formatter if the context-aware formatter fails"""
+        if task_type == 'symptom_to_disease':
+            diseases = data.get('top_diseases', [])
+            probabilities = data.get('probabilities', [])
+            symptoms = data.get('input_symptoms', [])
+            
+            if not diseases:
+                return "I couldn't find any diseases matching those symptoms. Could you provide more details?"
+                
+            response = ["Based on your symptoms:"]
+            for symptom in symptoms:
+                response.append(f"- {symptom}")
+                
+            response.append("\nThe most likely conditions are:")
+            for disease, prob in zip(diseases, probabilities):
+                response.append(f"- {disease} ({(prob * 100):.1f}%)")
+                
+            response.append("\nPlease consult with a healthcare professional for an accurate diagnosis.")
+            return "\n".join(response)
+            
+        elif task_type == 'disease_to_precaution':
+            if not data.get('found', False):
+                return f"I couldn't find information about precautions for '{data.get('disease', 'this condition')}'. Could you check the disease name and try again?"
+                
+            response = [f"Precautions for {data['disease']}:"]
+            for i, precaution in enumerate(data.get('precautions', []), 1):
+                response.append(f"{i}. {precaution}")
+                
+            response.append("\nRemember to consult with a healthcare provider for personalized advice.")
+            return "\n".join(response)
+            
+        elif task_type == 'disease_to_symptom':
+            if not data.get('found', False):
+                return f"I couldn't find information about symptoms of '{data.get('disease', 'this condition')}'. Could you check the disease name and try again?"
+                
+            response = [f"Common symptoms of {data['disease']} include:"]
+            for symptom in data.get('symptoms', []):
+                response.append(f"- {symptom}")
+                
+            response.append("\nNote: Not everyone will experience all these symptoms, and some people may have additional symptoms not listed here.")
+            return "\n".join(response)
+            
+        return "I've processed your health query. Please consult with a healthcare professional for personalized advice."
