@@ -84,7 +84,7 @@ def query_endpoint():
             result = symptom_model.predict_disease(extracted_info)
             raw_output = {
                 "top_diseases": result['diseases'][:3],
-                "match_scores": result['match_scores'],
+                "probabilities": result['probabilities'],
                 "input_symptoms": result['input_symptoms']
             }
         

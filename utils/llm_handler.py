@@ -114,6 +114,7 @@ System Output: {json.dumps(model_output)}
 Please create a natural, empathetic, short, brief, and informative response for the user based on this information.
 Guidelines:
 - Be clear and very concise
+- Use emojis if needed
 - Use natural language
 - Format the information in a readable way
 - Be empathetic and supportive
