@@ -1,7 +1,12 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, g
 from flask_cors import CORS
 import os
 import sys
+from functools import wraps
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Add project root to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -10,10 +15,51 @@ from utils.llm_handler import GeminiLLMHandler
 from models.symptom_to_disease import SymptomToDiseaseModel
 from models.disease_to_precaution import DiseaseToPrecautionModel
 from models.disease_to_symptom import DiseaseToSymptomModel
+from models.user import User
 
 # Initialize Flask app
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key')
+
+# Configure CORS
+CORS(app, 
+     resources={
+         r"/*": {
+             "origins": ["http://localhost:3000", "http://localhost:5000"],
+             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+             "allow_headers": ["Content-Type", "Authorization"],
+             "supports_credentials": True
+         }
+     })
+
+# Import and register blueprints
+from routes.auth import auth_bp
+app.register_blueprint(auth_bp, url_prefix='/api/auth')
+
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
+        
+        # Check for token in Authorization header
+        if 'Authorization' in request.headers:
+            token = request.headers['Authorization'].split(" ")[1]  # Bearer <token>
+        # Check for token in cookies
+        elif 'auth_token' in request.cookies:
+            token = request.cookies.get('auth_token')
+        
+        if not token:
+            return jsonify({'message': 'Authentication required!'}), 401
+            
+        user_id = User.verify_token(token)
+        if not user_id:
+            return jsonify({'message': 'Invalid or expired token!'}), 401
+            
+        # Store user_id in g for use in routes
+        g.user_id = user_id
+        return f(*args, **kwargs)
+    
+    return decorated
 
 # Initialize models (load once at startup)
 print("Loading models...")
@@ -32,6 +78,7 @@ def health_check():
     }), 200
 
 @app.route('/query', methods=['POST'])
+@token_required
 def query_endpoint():
     """
     Main endpoint to process user health queries.
@@ -138,6 +185,7 @@ def query_endpoint():
         }), 500
 
 @app.route('/diseases', methods=['GET'])
+@token_required
 def get_diseases():
     """Get list of all available diseases."""
     try:
@@ -154,6 +202,7 @@ def get_diseases():
         }), 500
 
 @app.route('/symptoms', methods=['GET'])
+@token_required
 def get_symptoms():
     """Get list of all available symptoms."""
     try:
