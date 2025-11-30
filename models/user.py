@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Connect to MongoDB
-client = MongoClient(os.getenv('MONGODB_URI', 'mongodb://localhost:27017/'))
+client = MongoClient(os.getenv('MONGODB_URI', 'mongodb+srv://susheelkrishnajabade_db_user:wa3MRtNS9RyOD9Oj@cluster-store.9dhlqbj.mongodb.net/?appName=Cluster-Store'))
 db = client['healthmate']
 users_collection = db['users']
 
