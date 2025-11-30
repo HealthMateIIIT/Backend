@@ -25,7 +25,7 @@ app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key')
 CORS(app, 
      resources={
          r"/*": {
-             "origins": ["http://localhost:3000", "http://localhost:5000"],
+             "origins": "*",
              "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
              "allow_headers": ["Content-Type", "Authorization"],
              "supports_credentials": True
@@ -73,7 +73,7 @@ def create_app():
     CORS(app, 
          resources={
              r"/*": {
-                 "origins": ["http://localhost:3000", "http://localhost:5000"],
+                 "origins": "*",
                  "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
                  "allow_headers": ["Content-Type", "Authorization"],
                  "supports_credentials": True
